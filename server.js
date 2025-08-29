@@ -12,31 +12,57 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
+// ===== CORS configuration =====
+// Adjust this to the exact deployed frontend origin.
+const FRONTEND_ORIGIN = "https://echopulse.petrotechindia.com";
+
+// If using cookies or Authorization headers, keep credentials true
+// and DO NOT use "*" for origin.
+const corsOptions = {
+  origin: FRONTEND_ORIGIN,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"], // add any custom headers used by the client
+  credentials: true, // set true only if sending cookies or auth credentials
+  optionsSuccessStatus: 204
+};
+
+// Apply CORS BEFORE any routes/middleware that might handle requests
+app.use(cors(corsOptions));
+
+// Ensure OPTIONS preflight always returns the right headers
+app.options("*", cors(corsOptions));
+
+// JSON parsing
+app.use(express.json());
+
+// ===== Socket.IO with matching CORS =====
 const io = socketIo(server, {
   cors: {
-    origin: "*", // you can restrict later to frontend URL
-  },
+    origin: FRONTEND_ORIGIN,
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
+  }
 });
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+// Optionally, to customize preflight for Socket.IO further:
+// io.engine.on("headers", (headers, req) => {
+//   headers["Access-Control-Allow-Origin"] = FRONTEND_ORIGIN;
+//   headers["Access-Control-Allow-Credentials"] = "true";
+// });
 
 const connectedUsers = new Map();
 
 io.on("connection", (socket) => {
   console.log("⚡ New client connected:", socket.id);
 
-  // Register user with their ID
   socket.on("register", (userId) => {
     connectedUsers.set(userId, socket.id);
     console.log(`✅ User registered: ${userId} -> ${socket.id}`);
   });
 
-  // Handle sending notification
   socket.on("send_notification", async ({ receiverId, message, type }) => {
     console.log("🔔 Notification to send:", receiverId, message);
-
     try {
       const notification = await Notification.create({
         userId: receiverId,
@@ -56,7 +82,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Handle disconnect
   socket.on("disconnect", () => {
     for (let [userId, socketId] of connectedUsers.entries()) {
       if (socketId === socket.id) {
@@ -68,14 +93,14 @@ io.on("connection", (socket) => {
   });
 });
 
-// Middleware to attach socket.io to routes
+// Attach io and connectedUsers to requests
 app.use((req, res, next) => {
   req.io = io;
   req.connectedUsers = connectedUsers;
   next();
 });
 
-// Routes
+// ===== Routes =====
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
 app.use("/api/tasks", require("./routes/taskRoute"));
@@ -95,15 +120,15 @@ app.use("/api/listings", require("./routes/listingRoutes"));
 app.use("/api/admin/sales-lead-updates", require("./routes/adminLeadUpdates"));
 app.use("/api", require("./routes/announcemntRoutes"));
 
-// MongoDB Connection
+// ===== MongoDB =====
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+.then(() => console.log("✅ MongoDB connected"))
+.catch((err) => console.error("❌ MongoDB connection error:", err));
 
-// Start server
+// ===== Start server =====
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
