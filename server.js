@@ -19,7 +19,25 @@ const io = socketIo(server, {
 });
 
 // Middleware
-app.use(cors());
+const allowedOrigins = [
+  "https://echopulse.petrotechindia.com", // your frontend
+  "http://localhost:3000",                // for local dev
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps, curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      return callback(new Error("CORS not allowed"), false);
+    }
+    return callback(null, true);
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+}));
+app.options("*", cors());
 app.use(express.json());
 
 const connectedUsers = new Map();
