@@ -43,7 +43,11 @@ exports.markIn = async (req, res) => {
 // POST /api/attendance/mark-out
 exports.markOut = async (req, res) => {
   const employeeId = req.user.id;
-  const now = moment.tz(ZONE);
+
+  // ✅ Always use a safe string for timezone
+  const timezone = typeof ZONE === "string" ? ZONE : "Asia/Kolkata";
+
+  const now = moment.tz(timezone);
   const date = now.format("YYYY-MM-DD");
   const logoutAt = now; // full IST timestamp
 
@@ -57,11 +61,15 @@ exports.markOut = async (req, res) => {
       return res.status(200).json({ msg: "Already marked out" });
     }
 
-    // Build login as a full IST datetime:
-    // Prefer stored full timestamp; else reconstruct from date + display time.
+    // Build login moment
     const loginMoment = attendance.loginAt
-      ? moment.tz(attendance.loginAt, ZONE)
-      : moment.tz(`${attendance.date} ${attendance.loginTime}`, "YYYY-MM-DD HH:mm:ss", ZONE, true);
+      ? moment.tz(attendance.loginAt, timezone)
+      : moment.tz(
+          `${attendance.date} ${attendance.loginTime}`,
+          "YYYY-MM-DD HH:mm:ss",
+          timezone,
+          true
+        );
 
     if (!loginMoment.isValid()) {
       return res.status(400).json({ msg: "Invalid stored login time" });
@@ -75,8 +83,8 @@ exports.markOut = async (req, res) => {
     if (hoursWorked >= 7.5) status = "Present";
     else if (hoursWorked >= 4) status = "Half Day";
 
-    attendance.logoutTime = logoutAt.format("HH:mm:ss"); // display-only
-    attendance.logoutAt = logoutAt.toISOString();        // add this field to your schema (String)
+    attendance.logoutTime = logoutAt.format("HH:mm:ss"); // display
+    attendance.logoutAt = logoutAt.toISOString();        // save in DB
     attendance.hoursWorked = hoursWorked.toFixed(2);
     attendance.status = status;
 
@@ -93,6 +101,7 @@ exports.markOut = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
 
 // GET /api/attendance/all (Admin only)
 exports.getAll = async (req, res) => {
